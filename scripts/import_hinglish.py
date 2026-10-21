@@ -42,7 +42,9 @@ def main():
                      "label": int(root.label), "lang": "hinglish", "script": script_of(text),
                      "mix_level": level, "gen_method": gm, "category": root.category,
                      "source": root.source, "cmi": round(cmi(text), 2),
-                     "has_trigger_words": has_trigger_words(text), "verified": 0,
+                     "has_trigger_words": has_trigger_words(text),
+                     "root_trigger": int(root.get("root_trigger", has_trigger_words(root.text))),
+                     "verified": 0,
                      "split": root.split})
         seen.add(normalize_key(text))
     out = pd.concat([m, pd.DataFrame(rows)], ignore_index=True)

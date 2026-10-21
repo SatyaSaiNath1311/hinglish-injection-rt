@@ -5,6 +5,19 @@ from ..lexicon import EN_TO_HI_DEVA, EN_TO_HI_ROMAN
 
 LEVELS = {"light": 0.3, "medium": 0.6, "heavy": 0.9}
 
+# Controlled keyword ablation. Both variants keep everything else in English:
+#   trig_only    - ONLY the English trigger words become Hindi
+#   nontrig_only - everything EXCEPT the trigger words becomes Hindi
+# If recall drops on trig_only but not on nontrig_only, the detector relies on English keywords.
+TRIGGER_TABLE = {
+    "ignore": ["nazarandaz"], "disregard": ["nazarandaz"], "forget": ["bhool"],
+    "previous": ["pichle"], "prior": ["pehle ke"], "earlier": ["pehle ke"],
+    "above": ["upar wale"], "instructions": ["nirdesh"], "instruction": ["nirdesh"],
+    "rules": ["niyam"], "rule": ["niyam"], "guidelines": ["dishanirdesh"],
+    "restrictions": ["pabandiyan"],
+}
+NONTRIGGER_TABLE = {k: v for k, v in EN_TO_HI_ROMAN.items() if k not in TRIGGER_TABLE}
+
 # (pattern, roman options, devanagari options)
 PHRASE_RULES = [
     (re.compile(r"\b(ignore|disregard)\s+(all\s+)?(the\s+)?(previous|prior|above|earlier)\s+"
@@ -79,6 +92,8 @@ def make_variants(text, rng, include_deva=True):
         s = apply_phrases(text, "roman", p, rng)
         s = sub_words(s, EN_TO_HI_ROMAN, p, rng)
         cands.append((level, s, "roman"))
+    cands.append(("trig_only", sub_words(text, TRIGGER_TABLE, 1.0, rng), "roman"))
+    cands.append(("nontrig_only", sub_words(text, NONTRIGGER_TABLE, 0.9, rng), "roman"))
     if include_deva:
         s = apply_phrases(text, "deva", 0.6, rng)
         s = sub_words(s, EN_TO_HI_DEVA, 0.6, rng)

@@ -13,7 +13,7 @@ from .text_utils import (categorize, clean_text, has_trigger_words, is_english, 
                          normalize_key, stable_id)
 
 COLUMNS = ["id", "group_id", "text", "label", "lang", "script", "mix_level", "gen_method",
-           "category", "source", "cmi", "has_trigger_words", "verified", "split"]
+           "category", "source", "cmi", "has_trigger_words", "root_trigger", "verified", "split"]
 
 
 def _load_all(source_names, cap, seed, local_csv, demo):
@@ -64,6 +64,7 @@ def _row(**kw):
                 verified=0, cmi=0.0)
     base.update(kw)
     base["has_trigger_words"] = has_trigger_words(base["text"])
+    base.setdefault("root_trigger", base["has_trigger_words"])
     return base
 
 
@@ -90,21 +91,24 @@ def build_master(out_dir="data/processed", sources=("deepset", "xtram1", "gandal
             rows.append(_row(id=gid + "-" + v["mix_level"], group_id=gid, text=v["text"],
                              label=int(r["label"]), script=v["script"], mix_level=v["mix_level"],
                              gen_method=v["gen_method"], category=categorize(r["text"], r["label"]),
-                             source=r["source"], cmi=v["cmi"]))
+                             source=r["source"], cmi=v["cmi"],
+                             root_trigger=has_trigger_words(r["text"])))
 
     for i, (cat, en, hi) in enumerate(GOLD_MALICIOUS):
         gid = "m_gold_%03d" % i
         rows.append(_row(id=gid + "-en", group_id=gid, text=en, label=1, lang="en", category=cat,
                          source="manual_gold", verified=1))
         rows.append(_row(id=gid + "-manual", group_id=gid, text=hi, label=1, mix_level="manual",
-                         gen_method="manual", category=cat, source="manual_gold", cmi=round(cmi(hi), 2)))
+                         gen_method="manual", category=cat, source="manual_gold", cmi=round(cmi(hi), 2),
+                         root_trigger=has_trigger_words(en)))
     for i, (en, hi) in enumerate(HARD_NEGATIVES):
         gid = "m_hneg_%03d" % i
         rows.append(_row(id=gid + "-en", group_id=gid, text=en, label=0, lang="en",
                          category="hard_negative", source="manual_hard_negative", verified=1))
         rows.append(_row(id=gid + "-manual", group_id=gid, text=hi, label=0, mix_level="manual",
                          gen_method="manual", category="hard_negative",
-                         source="manual_hard_negative", cmi=round(cmi(hi), 2)))
+                         source="manual_hard_negative", cmi=round(cmi(hi), 2),
+                         root_trigger=has_trigger_words(en)))
 
     if use_mt:
         print("Machine-translating to Devanagari (optional track)...")
@@ -115,7 +119,7 @@ def build_master(out_dir="data/processed", sources=("deepset", "xtram1", "gandal
                 rows.append(_row(id=r["group_id"] + "-mt", group_id=r["group_id"], text=t.strip(),
                                  label=r["label"], script="devanagari", mix_level="deva_full",
                                  gen_method="mt", category=r["category"], source=r["source"],
-                                 cmi=round(cmi(t), 2)))
+                                 cmi=round(cmi(t), 2), root_trigger=r["root_trigger"]))
 
     df = pd.DataFrame(rows)
     # Drop duplicate texts globally (keep first), and rows whose text collides across groups.
@@ -179,6 +183,10 @@ def _write_card(df, path, sources, cap, seed, ood, use_mt, demo):
         "- original: public English data, cleaned, language-filtered, deduplicated.",
         "- lexicon: rule-based Hinglish (phrase rules + word table, light/medium/heavy, mixed "
         "Devanagari). Approximation: no verb conjugation or Hindi word order.",
+        "- trig_only / nontrig_only: controlled ablation. trig_only swaps ONLY English trigger "
+        "words (ignore, instructions, previous, rules...) for Hindi; nontrig_only swaps everything "
+        "else but keeps the trigger words in English. root_trigger = trigger flag of the English "
+        "source prompt, inherited by all its variants.",
         "- manual: author-written Hinglish twins (gold set, hard negatives).",
         "- mt: optional machine translation to Devanagari" + (" (included)." if use_mt else " (not included)."),
         "- external: Hinglish imported from another tool (scripts/import_hinglish.py).", "",

@@ -20,12 +20,14 @@ from scipy.stats import binomtest  # noqa: E402
 from hinglish_rt.detectors.registry import build_detectors  # noqa: E402
 from hinglish_rt.eval.metrics import bootstrap_ci, summarize  # noqa: E402
 
-GROUP_COLS = ["lang", "script", "mix_level", "cmi_bin", "category", "has_trigger_words", "source"]
+GROUP_COLS = ["lang", "script", "mix_level", "cmi_bin", "category", "has_trigger_words",
+              "root_trigger", "lang_x_root_trigger", "source"]
 
 
 def _metrics_row(det, split_name, by, name, g, thr):
     m = summarize(g.label.values, g.score.values, thr)
-    lo, hi = bootstrap_ci(g.label.values, g.score.values, thr, "recall", n_boot=300)
+    lo, hi = bootstrap_ci(g.label.values, g.score.values, thr, "recall", n_boot=200,
+                          groups=g.group_id.values)
     return {"detector": det, "split": split_name, "group_by": by, "group": str(name),
             "n_pos": int((g.label == 1).sum()), "n_neg": int((g.label == 0).sum()),
             "recall": m["recall"], "asr": m["asr"], "fpr": m["fpr"], "f1": m["f1"],
@@ -71,6 +73,10 @@ def main():
     df = df[df.split.isin(a.split)].reset_index(drop=True)
     df["cmi_bin"] = pd.cut(df.cmi, [-0.1, 0, 20, 40, 101],
                            labels=["0", "(0,20]", "(20,40]", "(40,100]"]).astype(str)
+    if "root_trigger" not in df.columns:  # older master.csv
+        roots = df[df.lang == "en"].set_index("group_id")["has_trigger_words"]
+        df["root_trigger"] = df["group_id"].map(roots).fillna(0).astype(int)
+    df["lang_x_root_trigger"] = df.lang + "_trig" + df.root_trigger.astype(str)
     print("Evaluating on %d rows from splits %s" % (len(df), a.split))
     dets = build_detectors(cfg, only=a.only, cache_dir=ROOT / cfg["paths"]["cache_dir"])
 

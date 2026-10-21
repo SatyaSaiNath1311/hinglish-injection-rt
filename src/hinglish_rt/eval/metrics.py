@@ -26,13 +26,27 @@ def summarize(y, s, thr=0.5):
     }
 
 
-def bootstrap_ci(y, s, thr=0.5, metric="recall", n_boot=1000, seed=0, alpha=0.05):
+def bootstrap_ci(y, s, thr=0.5, metric="recall", n_boot=1000, seed=0, alpha=0.05, groups=None):
+    """Percentile bootstrap CI. Pass `groups` (e.g. group_id) to resample whole groups, which
+    is required here because the variants of one prompt are strongly correlated."""
     y = np.asarray(y)
     s = np.asarray(s)
     rng = np.random.default_rng(seed)
+    if groups is None:
+        def draw():
+            return rng.integers(0, len(y), len(y))
+    else:
+        uniq, inv = np.unique(np.asarray(groups), return_inverse=True)
+        order = np.argsort(inv, kind="stable")
+        bounds = np.searchsorted(inv[order], np.arange(len(uniq) + 1))
+        members = [order[bounds[k]:bounds[k + 1]] for k in range(len(uniq))]
+
+        def draw():
+            pick = rng.integers(0, len(uniq), len(uniq))
+            return np.concatenate([members[k] for k in pick])
     vals = []
     for _ in range(n_boot):
-        idx = rng.integers(0, len(y), len(y))
+        idx = draw()
         v = summarize(y[idx], s[idx], thr)[metric]
         if v == v:
             vals.append(v)
