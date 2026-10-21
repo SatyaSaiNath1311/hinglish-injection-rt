@@ -28,6 +28,11 @@ def main():
     ap.add_argument("--judge", choices=["lexical", "embedding"], default="embedding")
     ap.add_argument("--split", nargs="+", default=["test"])
     ap.add_argument("--n_seeds", type=int, default=100)
+    ap.add_argument("--categories", nargs="+", default=["override", "exfiltration", "roleplay"],
+                    help="seed categories ('all' = no filter); excludes ambiguous 'other' by default")
+    ap.add_argument("--min_seed_score", type=float, default=0.9,
+                    help="only attack seeds the detector flags with at least this score")
+    ap.add_argument("--tag", default="", help="suffix for output files, e.g. _strict")
     ap.add_argument("--budget", type=int, default=50)
     ap.add_argument("--ppo_model", default=None)
     ap.add_argument("--seed", type=int, default=42)
@@ -42,11 +47,17 @@ def main():
     judge = LexicalIntentJudge() if a.judge == "lexical" else EmbeddingIntentJudge()
 
     df = pd.read_csv(a.data)
-    pool = df[(df.split.isin(a.split)) & (df.label == 1) & (df.lang == "en")].text.tolist()
-    caught = [t for t, s in zip(pool, det.score_batch(pool)) if s >= det.threshold]
+    sub = df[(df.split.isin(a.split)) & (df.label == 1) & (df.lang == "en")]
+    if "all" not in a.categories:
+        sub = sub[sub.category.isin(a.categories)]
+    pool = sub.text.tolist()
+    seed_score = dict(zip(pool, det.score_batch(pool)))
+    cut = max(det.threshold, a.min_seed_score)
+    caught = [t for t in pool if seed_score[t] >= cut]
     rng = random.Random(a.seed)
     seeds = rng.sample(caught, min(a.n_seeds, len(caught)))
-    print("Seeds caught by detector: %d/%d -> using %d" % (len(caught), len(pool), len(seeds)))
+    print("Seeds in pool: %d | flagged with score >= %.2f: %d -> using %d" %
+          (len(pool), cut, len(caught), len(seeds)))
 
     ppo = None
     if a.ppo_model:
@@ -64,6 +75,7 @@ def main():
                                      dict(env_kw, max_steps=max_steps), seed=a.seed + k)
         for m, r in runs.items():
             rows.append({"detector": a.detector, "method": m, "seed_text": text,
+                         "seed_score": seed_score[text],
                          "adv_text": r["text"], **{k2: r[k2] for k2 in ("success", "queries", "score", "intent")}})
     det.flush()
 
@@ -72,16 +84,23 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     raw = ROOT / "results" / "raw"
     raw.mkdir(parents=True, exist_ok=True)
-    res.to_csv(raw / ("attack_runs_" + a.detector + ".csv"), index=False, encoding="utf-8")
+    res.to_csv(raw / ("attack_runs_" + a.detector + a.tag + ".csv"), index=False, encoding="utf-8")
 
     summ = []
     for m, g in res.groupby("method"):
         for b in BUDGETS:
             if b <= a.budget:
-                summ.append({"detector": a.detector, "method": m, "budget": b, "n": len(g),
+                summ.append({"detector": a.detector, "tag": a.tag, "method": m, "budget": b, "n": len(g),
                              "asr": float(((g.success) & (g.queries <= b)).mean())})
     summ = pd.DataFrame(summ)
-    summ.to_csv(out / ("attack_efficiency_" + a.detector + ".csv"), index=False)
+    summ.to_csv(out / ("attack_efficiency_" + a.detector + a.tag + ".csv"), index=False)
+    res["bucket"] = pd.cut(res.seed_score, [0, 0.9, 0.99, 1.01], labels=["<0.9", "0.9-0.99", ">=0.99"],
+                           right=False)
+    res["win"] = res.success & (res.queries <= a.budget)
+    by = res.groupby(["method", "bucket"], observed=True).win.agg(["mean", "size"]).reset_index()
+    by.columns = ["method", "seed_score_bucket", "asr", "n"]
+    by.to_csv(out / ("attack_by_seed_score_" + a.detector + a.tag + ".csv"), index=False)
+    print(by.round(3).to_string(index=False))
     print(summ.pivot(index="budget", columns="method", values="asr").round(3).to_string())
 
 

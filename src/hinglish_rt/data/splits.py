@@ -11,14 +11,14 @@ def _u(group_id, seed):
 
 
 def split_for_group(group_id, source, label, category, seed=42,
-                    ratios=(0.70, 0.15, 0.15), ood_category=None):
+                    ratios=(0.70, 0.15, 0.15), ood_category=None, family=""):
     """Deterministic split for one group. Depends only on the group's id and attributes, so
     adding or removing other rows never reshuffles existing assignments."""
     if str(source).startswith("manual_"):
         return "gold"
     if ood_category and int(label) == 1 and category == ood_category:
         return "test_ood"
-    u = _u(group_id, seed)
+    u = _u(family or group_id, seed)  # synthetic families split as a whole (template-level)
     if u < ratios[0]:
         return "train"
     if u < ratios[0] + ratios[1]:
@@ -28,8 +28,10 @@ def split_for_group(group_id, source, label, category, seed=42,
 
 def assign_splits(df, seed=42, ratios=(0.70, 0.15, 0.15), ood_category=None):
     roots = df.sort_values("id").groupby("group_id").first()
+    fam = lambda r: r["family"] if isinstance(r.get("family", ""), str) else ""
     mapping = {
-        gid: split_for_group(gid, r["source"], r["label"], r["category"], seed, ratios, ood_category)
+        gid: split_for_group(gid, r["source"], r["label"], r["category"], seed, ratios,
+                             ood_category, fam(r))
         for gid, r in roots.iterrows()
     }
     df = df.copy()

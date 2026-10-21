@@ -24,9 +24,12 @@ def main():
     ap.add_argument("--mt", action="store_true", help="add machine-translated Devanagari variants")
     ap.add_argument("--local_csv", default=None, help="CSV with text,label[,source] instead of HF")
     ap.add_argument("--demo", action="store_true", help="synthetic corpus (pipeline test only)")
+    ap.add_argument("--hard_neg_per_template", type=int, default=40,
+                    help="synthetic benign prompts with attack-style words, per template (20 templates)")
     ap.add_argument("--out", default=str(ROOT / "data" / "processed"))
     a = ap.parse_args()
-    build_master(a.out, a.sources, a.cap, a.seed, a.ood or None, a.mt, a.local_csv, a.demo)
+    build_master(a.out, a.sources, a.cap, a.seed, a.ood or None, a.mt, a.local_csv, a.demo,
+                 a.hard_neg_per_template)
 
 
 if __name__ == "__main__":

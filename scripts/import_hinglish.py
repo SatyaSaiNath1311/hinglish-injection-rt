@@ -44,6 +44,7 @@ def main():
                      "source": root.source, "cmi": round(cmi(text), 2),
                      "has_trigger_words": has_trigger_words(text),
                      "root_trigger": int(root.get("root_trigger", has_trigger_words(root.text))),
+                     "family": root["family"] if isinstance(root.get("family", ""), str) else "",
                      "verified": 0,
                      "split": root.split})
         seen.add(normalize_key(text))

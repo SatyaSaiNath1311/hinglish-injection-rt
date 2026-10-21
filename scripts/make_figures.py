@@ -69,7 +69,10 @@ def attack_curves():
     if not files:
         return
     d = pd.concat([pd.read_csv(f) for f in files])
-    for det, g in d.groupby("detector"):
+    if "tag" not in d.columns:
+        d["tag"] = ""
+    d["tag"] = d["tag"].fillna("")
+    for (det, tag), g in d.groupby(["detector", "tag"]):
         fig, ax = plt.subplots(figsize=(6, 4))
         for m, gm in g.groupby("method"):
             ax.plot(gm.budget, gm.asr, marker="o", label=m)
@@ -77,8 +80,8 @@ def attack_curves():
         ax.set_ylabel("Attack success rate")
         ax.set_ylim(0, 1.05)
         ax.legend()
-        ax.set_title("Attack efficiency vs " + det)
-        _save(fig, "fig3_attack_efficiency_" + det)
+        ax.set_title("Attack efficiency vs " + det + (" " + tag if tag else ""))
+        _save(fig, "fig3_attack_efficiency_" + det + tag)
 
 
 def main():

@@ -20,23 +20,17 @@ detectors:
     model_id: meta-llama/Llama-Prompt-Guard-2-86M   # gated: needs HF_TOKEN + accepted license
     malicious_labels: [LABEL_1]
 
-  # Your own PromptGuard (DistilBERT + regex). Point model_id to the local checkpoint, then enable.
-  - name: promptguard_own
-    type: hybrid
-    model_id: ./models/promptguard
-    malicious_labels: [LABEL_1]
-    enabled: false
-
 attacker:
   env:
     max_steps: 8
-    alpha: 1.0          # weight on (1 - detector score)
-    beta: 0.5           # weight on intent preservation
-    gamma: 0.05         # cost per query/edit
+    alpha: 1.0          # weight on detector log-odds drop
+    beta: 2.0           # penalty weight when intent < tau
+    gamma: 0.02         # cost per step
     tau: 0.7            # min intent score for a valid evasion
-    success_bonus: 2.0
+    success_bonus: 5.0
   ppo:
     learning_rate: 0.0003
-    n_steps: 256
-    batch_size: 64
+    n_steps: 512
+    batch_size: 128
     gamma: 0.99
+    ent_coef: 0.02

@@ -5,15 +5,16 @@ from pathlib import Path
 import pandas as pd
 
 from ..cmi import cmi, script_of
+from .hard_negatives import generate_hard_negatives
 from .hinglish import make_variants, mt_translate_devanagari
 from .manual_pairs import GOLD_MALICIOUS, HARD_NEGATIVES
 from .sources import SOURCES, demo_corpus, load_source
 from .splits import assign_splits, save_splits, verify_splits
-from .text_utils import (categorize, clean_text, has_trigger_words, is_english, near_dedupe,
-                         normalize_key, stable_id)
+from .text_utils import (categorize, clean_text, has_trigger_words, is_english, near_any,
+                         near_dedupe, normalize_key, stable_id)
 
 COLUMNS = ["id", "group_id", "text", "label", "lang", "script", "mix_level", "gen_method",
-           "category", "source", "cmi", "has_trigger_words", "root_trigger", "verified", "split"]
+           "category", "source", "cmi", "has_trigger_words", "root_trigger", "family", "verified", "split"]
 
 
 def _load_all(source_names, cap, seed, local_csv, demo):
@@ -35,7 +36,7 @@ def _load_all(source_names, cap, seed, local_csv, demo):
     return pd.concat(frames, ignore_index=True)
 
 
-def _english_rows(df, cap, seed, manual_keys):
+def _english_rows(df, cap, seed, manual_keys, manual_texts=()):
     n0 = len(df)
     df = df.copy()
     df["text"] = df["text"].map(clean_text)
@@ -56,6 +57,10 @@ def _english_rows(df, cap, seed, manual_keys):
     keep = near_dedupe(df["text"].tolist())
     df = df[keep].reset_index(drop=True)
     print("  after per-source cap (%d) + near-dedupe: %d" % (cap, len(df)))
+    if len(manual_texts):
+        near = near_any(df["text"].tolist(), manual_texts)
+        df = df[~near].reset_index(drop=True)
+        print("  dropped %d public rows near-identical to gold prompts" % int(near.sum()))
     return df.drop(columns=["_k"])
 
 
@@ -65,11 +70,13 @@ def _row(**kw):
     base.update(kw)
     base["has_trigger_words"] = has_trigger_words(base["text"])
     base.setdefault("root_trigger", base["has_trigger_words"])
+    base.setdefault("family", "")
     return base
 
 
 def build_master(out_dir="data/processed", sources=("deepset", "xtram1", "gandalf"), cap=2000,
-                 seed=42, ood_category="roleplay", use_mt=False, local_csv=None, demo=False):
+                 seed=42, ood_category="roleplay", use_mt=False, local_csv=None, demo=False,
+                 hard_neg_per_template=40):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     print("Loading sources...")
@@ -78,7 +85,8 @@ def build_master(out_dir="data/processed", sources=("deepset", "xtram1", "gandal
     manual_keys = {normalize_key(en) for _, en, _ in GOLD_MALICIOUS} | \
                   {normalize_key(en) for en, _ in HARD_NEGATIVES}
     print("Cleaning...")
-    eng = _english_rows(raw, cap, seed, manual_keys)
+    manual_texts = [en for _, en, _ in GOLD_MALICIOUS] + [en for en, _ in HARD_NEGATIVES]
+    eng = _english_rows(raw, cap, seed, manual_keys, manual_texts)
 
     rows = []
     for _, r in eng.iterrows():
@@ -93,6 +101,28 @@ def build_master(out_dir="data/processed", sources=("deepset", "xtram1", "gandal
                              gen_method=v["gen_method"], category=categorize(r["text"], r["label"]),
                              source=r["source"], cmi=v["cmi"],
                              root_trigger=has_trigger_words(r["text"])))
+
+    synth = [r for r in generate_hard_negatives(hard_neg_per_template, seed)
+             if normalize_key(r[1]) not in manual_keys]
+    near_gold = near_any([r[1] for r in synth], manual_texts)
+    print("  dropped %d synthetic hard negatives near-identical to gold prompts" % int(near_gold.sum()))
+    for (tid, en, hi), drop in zip(synth, near_gold):
+        if drop:
+            continue
+        gid = stable_id(en, prefix="h")
+        rows.append(_row(id=gid + "-en", group_id=gid, text=en, label=0, lang="en",
+                         category="hard_negative", source="synthetic_hard_negative", verified=1,
+                         family=tid))
+        rows.append(_row(id=gid + "-tmpl", group_id=gid, text=hi, label=0, mix_level="manual_template",
+                         gen_method="manual_template", category="hard_negative",
+                         source="synthetic_hard_negative", cmi=round(cmi(hi), 2),
+                         root_trigger=has_trigger_words(en), family=tid))
+        rng = random.Random(str(seed) + ":" + gid)
+        for v in make_variants(en, rng):
+            rows.append(_row(id=gid + "-" + v["mix_level"], group_id=gid, text=v["text"], label=0,
+                             script=v["script"], mix_level=v["mix_level"], gen_method=v["gen_method"],
+                             category="hard_negative", source="synthetic_hard_negative", cmi=v["cmi"],
+                             root_trigger=has_trigger_words(en), family=tid))
 
     for i, (cat, en, hi) in enumerate(GOLD_MALICIOUS):
         gid = "m_gold_%03d" % i
@@ -188,6 +218,8 @@ def _write_card(df, path, sources, cap, seed, ood, use_mt, demo):
         "else but keeps the trigger words in English. root_trigger = trigger flag of the English "
         "source prompt, inherited by all its variants.",
         "- manual: author-written Hinglish twins (gold set, hard negatives).",
+        "- manual_template: author-written Hinglish for synthetic hard negatives (benign prompts "
+        "containing attack-style words). Whole templates (the `family` column) share one split.",
         "- mt: optional machine translation to Devanagari" + (" (included)." if use_mt else " (not included)."),
         "- external: Hinglish imported from another tool (scripts/import_hinglish.py).", "",
         "## Verification status",

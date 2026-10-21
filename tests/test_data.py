@@ -93,3 +93,21 @@ def test_cluster_bootstrap():
     g = np.repeat(np.arange(20), 2)
     lo, hi = bootstrap_ci(y, sc, 0.5, "recall", n_boot=100, groups=g)
     assert 0.0 <= lo <= 0.5 <= hi <= 1.0
+
+
+def test_hard_negatives_and_family_splits(tmp_path):
+    df = build_master(tmp_path, demo=True, cap=300)
+    hn = df[df.source == "synthetic_hard_negative"]
+    assert len(hn) > 400 and (hn.label == 0).all()
+    fam = hn[hn.family != ""].groupby("family").split.nunique()
+    assert fam.max() == 1                      # a template never spans splits
+    assert (df[df.source == "manual_gold"].split == "gold").all()
+    assert "manual_template" in set(hn.mix_level)
+
+
+def test_gold_has_no_near_copies_in_train(tmp_path):
+    from hinglish_rt.data.text_utils import near_any
+    df = build_master(tmp_path, demo=True, cap=300)
+    gold = df[(df.source.str.startswith("manual_")) & (df.lang == "en")].text.tolist()
+    other = df[(~df.source.str.startswith("manual_")) & (df.lang == "en")].text.tolist()
+    assert not near_any(other, gold).any()

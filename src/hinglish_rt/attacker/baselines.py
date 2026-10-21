@@ -18,14 +18,18 @@ def _eval(det, judge, original, cand):
 
 
 def random_attack(det, judge, text, budget, rng, tau, max_steps=8):
-    """Random walk over edits; restarts from the original every max_steps."""
-    q, cur, steps = 0, text, 0
+    """Random walk over edits; restarts from the original every max_steps. Only edits that
+    change the text cost a query (same accounting as the other attackers)."""
+    q, guard, cur, steps = 0, 0, text, 0
     best = (1.0, 0.0, text)
-    while q < budget:
+    while q < budget and guard < budget * 20:
+        guard += 1
         if steps >= max_steps:
             cur, steps = text, 0
-        cur, _ = apply_action(rng.randrange(len(ACTION_NAMES)), cur, rng)
+        cur, changed = apply_action(rng.randrange(len(ACTION_NAMES)), cur, rng)
         steps += 1
+        if not changed:
+            continue
         q += 1
         s, i = _eval(det, judge, text, cur)
         if s < det.threshold and i >= tau:
@@ -69,16 +73,18 @@ def hill_climb_attack(det, judge, text, budget, rng, tau):
 
 def ppo_attack(model, det, judge, text, budget, env_kwargs, seed=0):
     """Roll out a trained policy (anything with .predict(obs, deterministic)) from one seed text,
-    restarting episodes until the query budget is spent."""
+    restarting episodes until the query budget is spent. Only edits that change the text cost a
+    query, matching the other attackers; a step cap prevents endless no-op loops."""
     env = EvasionEnv(det, judge, [text], seed=seed, **env_kwargs)
-    q, best = 0, (1.0, 0.0, text)
-    while q < budget:
+    q, steps, best = 0, 0, (1.0, 0.0, text)
+    while q < budget and steps < budget * 20:
         obs, _ = env.reset()
         done = False
-        while not done and q < budget:
+        while not done and q < budget and steps < budget * 20:
             action, _ = model.predict(obs, deterministic=False)
             obs, _, term, trunc, info = env.step(action)
-            q += 1
+            steps += 1
+            q += 1 if info["changed"] else 0
             done = term or trunc
             if info["success"]:
                 return _result(True, q, info["text"], info["score"], info["intent"])

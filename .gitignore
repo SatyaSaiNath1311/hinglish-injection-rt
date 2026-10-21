@@ -18,3 +18,4 @@ access_token
 *.egg-info/
 results/kaggle_output/
 *.zip
+*.zip

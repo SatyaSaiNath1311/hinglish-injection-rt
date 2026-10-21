@@ -81,6 +81,10 @@ def has_trigger_words(text):
     return int(bool(_TRIGGER.search(text)))
 
 
+def count_trigger_words(text):
+    return len(_TRIGGER.findall(text))
+
+
 def near_dedupe(texts, thr=0.95, chunk=1000):
     """Return a boolean keep-mask; drops later items whose char-ngram TF-IDF cosine to an
     earlier kept item exceeds thr."""
@@ -102,3 +106,23 @@ def near_dedupe(texts, thr=0.95, chunk=1000):
             if (row[keep[:i]] > thr).any():
                 keep[i] = False
     return keep
+
+
+def near_any(candidates, references, thr=0.9, chunk=1000):
+    """Boolean mask: True where a candidate has cosine similarity > thr to ANY reference text
+    (punctuation-insensitive char n-gram TF-IDF). Used to keep gold prompts free of near-copies."""
+    from sklearn.feature_extraction.text import TfidfVectorizer
+
+    candidates, references = list(candidates), list(references)
+    if not candidates or not references:
+        return np.zeros(len(candidates), dtype=bool)
+    clean = lambda t: re.sub(r"[^\w\s]", "", normalize_key(t))
+    vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), sublinear_tf=True)
+    vec.fit([clean(t) for t in candidates + references])
+    Xc = vec.transform([clean(t) for t in candidates])
+    Xr = vec.transform([clean(t) for t in references])
+    hit = np.zeros(len(candidates), dtype=bool)
+    for start in range(0, len(candidates), chunk):
+        sims = (Xc[start:start + chunk] @ Xr.T).toarray()
+        hit[start:start + chunk] = sims.max(axis=1) > thr
+    return hit

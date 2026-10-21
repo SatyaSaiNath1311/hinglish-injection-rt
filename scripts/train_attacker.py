@@ -17,9 +17,21 @@ from hinglish_rt.attacker.reward import EmbeddingIntentJudge, LexicalIntentJudge
 from hinglish_rt.detectors.registry import build_detectors  # noqa: E402
 
 
-def _caught_seeds(df, splits, det):
-    pool = df[(df.split.isin(splits)) & (df.label == 1) & (df.lang == "en")].text.tolist()
-    return [t for t, s in zip(pool, det.score_batch(pool)) if s >= det.threshold]
+def _caught_seeds(df, splits, det, categories, min_score):
+    sub = df[(df.split.isin(splits)) & (df.label == 1) & (df.lang == "en")]
+    if "all" not in categories:
+        sub = sub[sub.category.isin(categories)]
+    pool = sub.text.tolist()
+    cut = max(det.threshold, min_score)
+    return [t for t, s in zip(pool, det.score_batch(pool)) if s >= cut]
+
+
+class RandomPolicy:
+    def __init__(self, env):
+        self.env = env
+
+    def predict(self, obs, deterministic=False):
+        return self.env.action_space.sample(), None
 
 
 def _rollouts(env, model, n, seed0):
@@ -44,6 +56,8 @@ def main():
     ap.add_argument("--detector", required=True)
     ap.add_argument("--judge", choices=["lexical", "embedding"], default="embedding")
     ap.add_argument("--timesteps", type=int, default=50000)
+    ap.add_argument("--categories", nargs="+", default=["override", "exfiltration", "roleplay"])
+    ap.add_argument("--min_seed_score", type=float, default=0.9)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--eval_episodes", type=int, default=200)
     ap.add_argument("--out", default=str(ROOT / "results" / "raw"))
@@ -56,8 +70,8 @@ def main():
     det = build_detectors(cfg, only=[a.detector], cache_dir=ROOT / cfg["paths"]["cache_dir"])[a.detector]
     judge = LexicalIntentJudge() if a.judge == "lexical" else EmbeddingIntentJudge()
 
-    train_seeds = _caught_seeds(df, ["train"], det)
-    test_seeds = _caught_seeds(df, ["test"], det)
+    train_seeds = _caught_seeds(df, ["train"], det, a.categories, a.min_seed_score)
+    test_seeds = _caught_seeds(df, ["test"], det, a.categories, a.min_seed_score)
     print("Seeds caught: train=%d, test=%d" % (len(train_seeds), len(test_seeds)))
 
     env = EvasionEnv(det, judge, train_seeds, seed=a.seed, **cfg["attacker"]["env"])
@@ -71,11 +85,14 @@ def main():
     summary = []
     for name, seeds in (("train_seeds", train_seeds), ("test_seeds", test_seeds)):
         e = EvasionEnv(det, judge, seeds, seed=a.seed + 1, **cfg["attacker"]["env"])
-        wins, rows = _rollouts(e, model, a.eval_episodes, 10_000)
-        pd.DataFrame(rows).to_csv(out_dir / ("evasions_" + name + ".csv"), index=False, encoding="utf-8")
-        summary.append({"detector": a.detector, "seeds": name, "episodes": a.eval_episodes,
-                        "success_rate": wins / a.eval_episodes})
-        print(name + ": " + str(wins) + "/" + str(a.eval_episodes))
+        for policy_name, policy in (("ppo", model), ("random_policy", RandomPolicy(e))):
+            wins, rows = _rollouts(e, policy, a.eval_episodes, 10_000)
+            if policy_name == "ppo":
+                pd.DataFrame(rows).to_csv(out_dir / ("evasions_" + name + ".csv"), index=False,
+                                          encoding="utf-8")
+            summary.append({"detector": a.detector, "seeds": name, "policy": policy_name,
+                            "episodes": a.eval_episodes, "success_rate": wins / a.eval_episodes})
+            print(name + " / " + policy_name + ": " + str(wins) + "/" + str(a.eval_episodes))
     pd.DataFrame(summary).to_csv(out_dir / "summary.csv", index=False)
     det.flush()
 
