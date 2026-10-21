@@ -1,5 +1,0 @@
-Metadata-Version: 2.4
-Name: hinglish-rt
-Version: 0.1.0
-Summary: RL red-teaming of prompt-injection detectors in Hinglish
-Requires-Python: >=3.10
