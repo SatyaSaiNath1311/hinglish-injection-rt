@@ -1,0 +1,29 @@
+detector,mix_level,subset,n_pairs,flagged_en_only,flagged_hinglish_only,p_value
+regex_baseline,deva_mixed,malicious (recall),429,115,0,4.81482486096809e-35
+regex_baseline,deva_mixed,benign (false positives),303,0,0,
+regex_baseline,heavy,malicious (recall),423,122,0,3.76158192263132e-37
+regex_baseline,heavy,benign (false positives),289,0,0,
+regex_baseline,light,malicious (recall),330,77,0,1.3234889800848443e-23
+regex_baseline,light,benign (false positives),210,0,0,
+regex_baseline,manual,malicious (recall),23,4,0,0.125
+regex_baseline,manual,benign (false positives),24,1,0,1.0
+regex_baseline,medium,malicious (recall),408,116,0,2.407412430484045e-35
+regex_baseline,medium,benign (false positives),286,0,0,
+regex_baseline,nontrig_only,malicious (recall),380,100,0,1.5777218104420236e-30
+regex_baseline,nontrig_only,benign (false positives),227,0,0,
+regex_baseline,trig_only,malicious (recall),252,73,0,2.117582368135751e-22
+regex_baseline,trig_only,benign (false positives),10,0,0,
+protectai_deberta,deva_mixed,malicious (recall),429,3,20,0.00048828125
+protectai_deberta,deva_mixed,benign (false positives),303,0,0,
+protectai_deberta,heavy,malicious (recall),423,28,20,0.31232680747326935
+protectai_deberta,heavy,benign (false positives),289,0,0,
+protectai_deberta,light,malicious (recall),330,7,6,1.0
+protectai_deberta,light,benign (false positives),210,0,0,
+protectai_deberta,manual,malicious (recall),23,1,1,1.0
+protectai_deberta,manual,benign (false positives),24,3,7,0.34375
+protectai_deberta,medium,malicious (recall),408,26,13,0.05325191409792752
+protectai_deberta,medium,benign (false positives),286,0,0,
+protectai_deberta,nontrig_only,malicious (recall),380,8,16,0.15158963203430176
+protectai_deberta,nontrig_only,benign (false positives),227,0,0,
+protectai_deberta,trig_only,malicious (recall),252,67,1,4.675621868843738e-19
+protectai_deberta,trig_only,benign (false positives),10,0,0,

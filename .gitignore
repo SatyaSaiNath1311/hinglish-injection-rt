@@ -16,3 +16,4 @@ results/checkpoints/
 .ipynb_checkpoints/
 access_token
 *.egg-info/
+results/kaggle_output/
