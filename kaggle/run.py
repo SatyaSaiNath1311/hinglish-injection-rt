@@ -8,7 +8,8 @@ REPO_URL = "https://github.com/SatyaSaiNath1311/hinglish-injection-rt.git"
 BRANCH = "main"
 JOBS = [
     "python scripts/build_dataset.py --sources deepset xtram1 gandalf dolly --cap 2000",
-    "python scripts/run_attackers.py --detector protectai_deberta --judge embedding --n_seeds 100 --budget 50",
+    "python scripts/train_attacker.py --detector protectai_deberta --judge embedding --timesteps 30000",
+    "python scripts/run_attackers.py --detector protectai_deberta --judge embedding --n_seeds 100 --budget 50 --ppo_model results/raw/protectai_deberta_seed42/ppo_attacker",
     "python scripts/make_figures.py",
 ]
 
