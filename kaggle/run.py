@@ -1,24 +1,23 @@
-# Kaggle runner: clones the repo, installs it, runs one command, copies results to /kaggle/working.
+# Kaggle runner: clones the GitHub repo, runs JOBS in order, and always saves outputs.
 import os
 import shutil
 import subprocess
 import sys
 
-REPO_URL = "https://github.com/YOUR_GITHUB_USERNAME/hinglish-injection-rt.git"  # EDIT
+REPO_URL = "https://github.com/SatyaSaiNath1311/hinglish-injection-rt.git"
 BRANCH = "main"
-CMD = "python scripts/run_baseline.py --only protectai_deberta"  # EDIT per experiment
+JOBS = [  # edit this list for each run
+    "python -m pytest -q",
+    "python scripts/build_dataset.py --sources deepset xtram1 gandalf dolly --cap 2000",
+    "python scripts/run_baseline.py --only regex_baseline protectai_deberta",
+    "python scripts/make_figures.py",
+]
 
 try:
     from kaggle_secrets import UserSecretsClient
-
-    secrets = UserSecretsClient()
-    for key in ("HF_TOKEN", "WANDB_API_KEY"):
-        try:
-            os.environ[key] = secrets.get_secret(key)
-        except Exception:
-            pass
-except ImportError:
-    pass
+    os.environ["HF_TOKEN"] = UserSecretsClient().get_secret("HF_TOKEN")
+except Exception as e:
+    print("No HF_TOKEN secret (fine for public models):", e)
 
 
 def sh(cmd, cwd=None):
@@ -31,11 +30,23 @@ repo = os.path.join(work, "repo")
 if os.path.exists(repo):
     shutil.rmtree(repo)
 sh("git clone --depth 1 -b " + BRANCH + " " + REPO_URL + " " + repo)
-sh(sys.executable + " -m pip install -q -r requirements.txt", cwd=repo)
-sh(sys.executable + " -m pip install -q -e .", cwd=repo)
-sh(CMD, cwd=repo)
+sh("pip install -q datasets sentence-transformers gymnasium stable-baselines3 pyyaml scipy", cwd=repo)
+sh("pip install -q -e . --no-deps", cwd=repo)
 
-out = os.path.join(work, "results")
-shutil.copytree(os.path.join(repo, "results"), out, dirs_exist_ok=True)
-shutil.rmtree(repo)  # keep only /kaggle/working/results as the kernel output
-print("Done. Results in " + out)
+failed = None
+try:
+    for job in JOBS:
+        sh(job, cwd=repo)
+except subprocess.CalledProcessError as e:
+    failed = e
+finally:
+    for src, dst in (("results", "results"), ("data/processed", "data_processed")):
+        p = os.path.join(repo, src)
+        if os.path.exists(p):
+            shutil.copytree(p, os.path.join(work, dst), dirs_exist_ok=True)
+    shutil.rmtree(repo, ignore_errors=True)
+
+if failed:
+    print("A job failed:", failed)
+    sys.exit(1)
+print("Done. Outputs in /kaggle/working/results and /kaggle/working/data_processed")
