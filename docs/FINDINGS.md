@@ -1,0 +1,19 @@
+# Findings (every claim links to a file in results/)
+
+## RQ1: English vs Hinglish gap
+- Claim: ... | Evidence: results/tables/...
+
+## RQ2: Effect of code-mixing type (script, CMI, matrix language)
+- Claim: ... | Evidence: ...
+
+## RQ3: RL attacker vs non-RL baselines
+- Claim: ... | Evidence: ...
+
+## RQ4: Mitigation and its cost
+- Claim: ... | Evidence: ...
+
+## Negative / null results
+- ...
+
+## Known limitations
+- ...

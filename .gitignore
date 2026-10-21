@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.cache/
+.env
+kaggle.json
+wandb/
+models/
+*.pt
+*.bin
+*.safetensors
+data/raw/
+data/processed/
+results/raw/
+results/checkpoints/
+.ipynb_checkpoints/
+access_token
