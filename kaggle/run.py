@@ -6,10 +6,9 @@ import sys
 
 REPO_URL = "https://github.com/SatyaSaiNath1311/hinglish-injection-rt.git"
 BRANCH = "main"
-JOBS = [  # edit this list for each run
-    "python -m pytest -q",
+JOBS = [
     "python scripts/build_dataset.py --sources deepset xtram1 gandalf dolly --cap 2000",
-    "python scripts/run_baseline.py --only regex_baseline protectai_deberta",
+    "python scripts/run_attackers.py --detector protectai_deberta --judge embedding --n_seeds 100 --budget 50",
     "python scripts/make_figures.py",
 ]
 
